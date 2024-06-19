@@ -176,7 +176,7 @@ By completing this task, you will learn more about selecting information from th
         "p_object_id" number
     )
     as mle language javascript
-    {{
+    \{\{
     const result = session.execute(
         `select
             owner,
@@ -209,7 +209,7 @@ By completing this task, you will learn more about selecting information from th
     if ( numRows === 0 ) {
         throw `no data found for object ID ${p_object_id}`;
     }
-    }};
+    \}\};
     /
     </copy>
     ```
@@ -446,7 +446,7 @@ The previous tasks in this lab focused on _reading_ from the database. In this p
         "p_log_message" log_t.log_message%type
     ) return log_t.log_id%type 
     as mle language javascript
-    {{
+    \{\{
     const result = session.execute(
         `insert into log_t (
             log_message
