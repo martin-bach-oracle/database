@@ -2,13 +2,13 @@
 
 ## Introduction
 
-JSON, short for JavaScript Object Notation, has become the de-facto standard data interchange format and is a very popular for storing data. Oracle's Converged Database has supported JSON for many years, adding functionality with each release on top of an already impressive base. Oracle Database 23ai Free is no exception.
+JSON, short for JavaScript Object Notation, has become the de-facto standard data interchange format and is a very popular for storing data. Oracle's Converged Database has supported JSON for many years, adding functionality with each release on top of an already impressive base. Oracle Database 23ai is no exception.
 
 You already got a glimpse of JSON in `processOrder()`, part of the `business_logic` module. This function is called with a string argument. The string is made up of a series of key-value pairs, each separated by a semi-colon each. The input parameter is subsequently translated to a JSON object and used in an insert statement showcasing the `json_table` function.
 
 > **Note:** You could have stored the JSON document in a JSON column in the table directly, but then you wouldn't have seen how easy it is to convert JSON to a relational format
 
-In this lab you will learn about an alternative way of working with JSON, based on the Simple Document Access Model (SODA).
+In this lab you will learn about an alternative way of working with JSON, based on the Simple Document Access Model (SODA). SODA provides a No-SQL API to work with Oracle Database as you would with Document Databases.
 
 Estimated Lab Time: 10 minutes
 
@@ -28,18 +28,10 @@ In this lab, you will:
 
 This lab assumes you have:
 
-- An Oracle Database 23ai Free environment available to use
-- Created the `emily` account as per Lab 1
+- An Oracle Database 23ai Always Free Autonomous Database-Serverless environment available to use
+- Created the EMILY account as per Lab 1
 
-## Task 1: Create a database session
-
-Connect to the pre-created Pluggable Database (PDB) `freepdb1` using the same credentials you supplied in Lab 1
-
-```bash
-<copy>sqlplus emily/yourNewPasswordGoesHere@localhost/freepdb1</copy>
-```
-
-## Task 2: Understand the Simple Oracle Document Access model
+## Task 1: Understand the Simple Oracle Document Access model
 
 In this part of the lab, you will learn how to interact with JSON using the Simple Oracle Document Access (SODA) model. The SODA API allows you to work with the database without ever having to resort to SQL's DML (Data Manipulation Language) and DDL (Data Definition Language) commands. Instead you follow the same approach you would when using specialised document databases while at the same time enjoying all the benefits of Oracle's Converged Database.
 
@@ -49,15 +41,14 @@ The SODA API is based around the following concepts:
 - **SODACollection**: Represents a collection of SODA documents. By default, collections allow JSON documents to be stored, and they add a default set of metadata to each document. This is recommended for most users.
 - **SODADocument**: Represents a document. Typically, the document content will be JSON. The document has properties including the content, a key, timestamps, and the media type. By default, document keys are automatically generated
 
-The code for this lab is very comprehensive. Rather than displaying just parts of it you will create the entire model in this step, followed by the call specification. The various steps in the next task discuss the relevant functions of the module in detail.
+The code for this lab is very comprehensive. Rather than displaying just parts of it you will create the entire module in this step, followed by the call specification. The various steps in the next task discuss the relevant functions of the module in detail.
+
+Begin by logging into Database Actions as EMILY, the switch to the JavaScript editor
 
 1. Begin this lab by creating the `SODA_API_LAB` JavaScript module:
 
     ```js
     <copy>
-    create or replace mle module soda_api_lab 
-    language javascript as
-
     /** 
      * Drop a collection in preparation of cleaning up
      * @param {string} collectionName the name of the collection to be dropped
@@ -121,6 +112,8 @@ The code for this lab is very comprehensive. Rather than displaying just parts o
 
                 let emp = doc.getContent();
                 emp.sal = newSal;
+                // an _id is automatically automatically assigned
+                delete emp._id;
                 col.find().key(doc.key).replaceOne(emp);
             }
 
@@ -248,11 +241,12 @@ The code for this lab is very comprehensive. Rather than displaying just parts o
 
         return col;
     }
-    /
     </copy>
     ```
 
 2. Create the corresponding call specifications next
+
+    Switch to the **SQL Worksheet** to create the call specification:
 
     ```sql
     <copy>
@@ -298,7 +292,7 @@ The code for this lab is very comprehensive. Rather than displaying just parts o
     </copy>
     ```
 
-## Task 3: Interact with JSON using the SODA API
+## Task 2: Interact with JSON using the SODA API
 
 Simple Oracle Document Access (SODA) is a set of NoSQL-style APIs that let you create and store collections of documents (in particular JSON) in Oracle Database, retrieve them, and query them, without needing to know SQL or how the documents are stored in the database.
 
@@ -544,6 +538,8 @@ The previous lab (concerning the JavaScript SQL driver) introduced a major diffe
 
                 let emp = doc.getContent();
                 emp.sal = newSal;
+                // an _id is automatically automatically assigned
+                delete emp._id;
                 col.find().key(doc.key).replaceOne(emp);
             }
 
@@ -741,4 +737,4 @@ You many now proceed to the next lab.
 
 - **Author** - Martin Bach, Senior Principal Product Manager, ST & Database Development
 - **Contributors** -  Lucas Braun, Sarah Hirschfeld
-- **Last Updated By/Date** - Martin Bach 28-NOV-2023
+- **Last Updated By/Date** - Martin Bach 19-JUN-2024

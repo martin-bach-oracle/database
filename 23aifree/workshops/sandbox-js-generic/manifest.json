@@ -8,9 +8,9 @@
           "filename": "../../introduction/intro-js-generic.md"
       },
       {
-          "title": "Get Started with NoVNC",
-          "description": "Verify Setup of compute instance",
-          "filename": "https://oracle-livelabs.github.io/common/labs/verify-compute/verify-compute-ssh-and-novnc.md"
+          "title": "Get Started with Cloud Console",
+          "description": "Verify Setup of your temporary tenancy",
+          "filename": "https://oracle-livelabs.github.io/common/labs/cloud-login/cloud-login-livelabs2.md"
       },
       {
           "title": "Lab 1: Get started with JavaScript development using a community module",
@@ -41,11 +41,6 @@
         "title": "Lab 6: Get insights into your code using Post-Execution Debugging",
         "description": "Learn how to use Post-Execution debugging for JavaScript modules",
         "filename": "../../js-generic-post-execution-debugging/post-execution-debugging.md"
-      },
-      {
-        "title": "Lab 7: Instructions for setup, tear-down and backup",
-        "description": "Learn how to configure the lab, tear it down, and back up your progress",
-        "filename": "../../js-generic-appendix/appendix.md"
       },
       {
         "title": "Need Help?",

@@ -18,8 +18,8 @@ In this lab, you will:
 
 This lab assumes you have:
 
-- An Oracle Database 23ai Free environment available to use
-- Created the `emily` account as per Lab 1
+- An Oracle Database 23ai Always Free Autonomous Database-Serverless environment available to use
+- Created the EMILY account as per Lab 1
 
 ## Task 1: Get familiar with the SQL Driver
 
@@ -38,20 +38,22 @@ By completing this task, you will learn more about selecting information from th
 
 1. Create a database session
 
-    Connect to `freepdb1` just as you did in the previous labs, don't forget to substitute the dummy password with your own
+    Log in to Database Actions as EMILY and switch to the JavaScript editor.
 
-    ```bash
-    <copy>sqlplus emily/yourNewPasswordGoesHere@localhost/freepdb1</copy>
-    ```
+2. Query the database by importing `mle-js-oracledb` explicitly in a MLE module
 
-2. Query the database by importing `mle-js-oracledb` explicitly
+    Paste the following code into the _Editor_ (not _Snippets_), name it `sql_driver_lab` and hit the _Save_ button.
 
     ```js
     <copy>
-    create or replace mle module sql_driver_lab language javascript as
-
     import oracledb from "mle-js-oracledb";
 
+    /**
+     * simple function to query the database who is working with it.
+     * resembles the UNIX command `whoami`. Uses the oracledb object
+     * to interact with the database.
+     * @returns {string} your username
+     */
     export function whoAmI() {
         // link the JavaScript SQL Driver to the existing session
         const connection = oracledb.defaultConnection();
@@ -61,16 +63,11 @@ By completing this task, you will learn more about selecting information from th
         // - bind variables (there are none in the example)
         // - additional options to execute()
         const result = connection.execute(
-            'select user',
-            [],
-            {
-                outFormat: oracledb.OUT_FORMAT_OBJECT
-            }
+            'select user'
         );
 
         return result.rows[0].USER;
     }
-    /
     </copy>
     ```
 
@@ -78,16 +75,20 @@ By completing this task, you will learn more about selecting information from th
 
 3. Query the database using global constants
 
-    A number of variables have been added to the global scope to enhance the developer experience. In this example you can learn how to re-write the previous module to make use of the variables in the global scope.
+    A number of variables have been added to the global scope to enhance the developer experience. In this example you can learn how to re-write the previous module to make use of the variables in the global scope. It is generally more convenient to use the variables from the global scope as it can save you a fair bit of typing.
 
     For a complete list of available global variables, see JavaScript Developer’s Guide, chapter 6.
 
+    Create a new MLE module named `sql_driver_lab_gs` with the following code:
+
     ```js
     <copy>
-    create or replace mle module sql_driver_lab language javascript as
-
-    // note the absence of the import statement
-
+    /**
+     * simple function to query the database who is working with it.
+     * resembles the UNIX command `whoami`. This time variables from
+     * the global scope are used, simplifying the code.
+     * @returns {string} your username
+     */
     export function whoAmI() {
 
         // there is no need to grab the defaultConnection()
@@ -97,16 +98,11 @@ By completing this task, you will learn more about selecting information from th
         // - bind variables (there are none in the example)
         // - additional options to execute()
         const result = session.execute(
-            'select user',
-            [],
-            {   // oracledb is also available in the global scope
-                outFormat: oracledb.OUT_FORMAT_OBJECT
-            }
+            'select user'
         );
 
         return result.rows[0].USER;
     }
-    /
     </copy>
     ```
 
@@ -115,11 +111,11 @@ By completing this task, you will learn more about selecting information from th
     - Because `oracledb` is part of the global scope there is no need to import it
     - The `session` object refers to the default connection you'd otherwise have to obtain using an extra line of code
 
-4. Use a `ResultSet` rather than a Direct Fetch
+4. Use a `ResultSet` instead of a Direct Fetch
 
     The previous examples demonstrated direct fetches. In other words all results are returned in the `result.rows` property. This can cause strain on the available memory if the result set is large. A more efficient way to fetch larger result sets is available in the form of the `ResultSet`.
 
-    Create a sample table with some data first.
+    Create a sample table with some data first, **using SQL Worksheet**.
 
     ```sql
     <copy>
@@ -131,42 +127,44 @@ By completing this task, you will learn more about selecting information from th
     </copy>
     ```
 
-    Next create an inline JavaScript function to iterate over the table. Inline JavaScript functions only permit importing modules built-into MLE _dynamically_ (see below for the API reference). Because dynamic imports require additional language elements to be used it is easier to refer to the `oracledb` and `session` objects in the global scope.
+    Remaning in the SQL Worksheet, switch to JavaScript from the top down menu on the top left of the worksheet. 
+
+    ![Switch to the JavaScript editor](images/sql-worksheet-javascript.jpg)
+
+    You can use this to execute JavaScript code without haveing to switch to the JavaScript _Snippets_ editor.
 
     ```js
     <copy>
-    create or replace procedure result_set_demo 
-    as mle language javascript
-    q'~
-    const result = session.execute(
-        `select
-            owner,
-            object_name,
-            object_id
-        from
-            result_set_demo_t
-        fetch first 100 rows only`,
-        [],
-        {
-            resultSet: true,
-            outFormat: oracledb.OUT_FORMAT_OBJECT
+    (async () => {
+        const result = session.execute(
+            `select
+                owner,
+                object_name,
+                object_id
+            from
+                result_set_demo_t
+            fetch first 10 rows only`,
+            [],
+            {
+                resultSet: true,
+                outFormat: oracledb.OUT_FORMAT_OBJECT
+            }
+        );
+
+        const rs = result.resultSet;
+
+        // use the iterable protocol with the resultSet
+        for (let row of rs) {
+            console.log(`${row.OBJECT_ID}    ${row.OWNER}    ${row.OBJECT_NAME}`);
         }
-    );
 
-    const rs = result.resultSet;
-
-    // use the iterable protocol with the resultSet
-    for (let row of rs) {
-        console.log(`${row.OBJECT_ID}    ${row.OWNER}    ${row.OBJECT_NAME}`);
-    }
-
-    rs.close();
-    ~';
-    /
+        // always close the ResultSet
+        rs.close();
+    })();
     </copy>
     ```
 
-    When executing the procedure you will see the first 100 lines of the table printed to your screen.
+    When executing the code you will see the first 10 lines of the table printed to your screen.
 
 5. Using Bind Variables
 
@@ -178,7 +176,7 @@ By completing this task, you will learn more about selecting information from th
         "p_object_id" number
     )
     as mle language javascript
-    q'~
+    {{
     const result = session.execute(
         `select
             owner,
@@ -211,7 +209,7 @@ By completing this task, you will learn more about selecting information from th
     if ( numRows === 0 ) {
         throw `no data found for object ID ${p_object_id}`;
     }
-    ~';
+    }};
     /
     </copy>
     ```
@@ -233,11 +231,10 @@ This task showcases several additional features:
 
 1. Create the JavaScript module
 
+    If you aren't yet using the JavaScript editor, switch to it and paste the following code and name the module `plsql_demo`:
+
     ```js
     <copy>
-    create or replace mle module plsql_demo 
-    language javascript as
-
     // global variable used to preserve the existing module and action
     let savedModuleAction = {};
 
@@ -346,11 +343,19 @@ This task showcases several additional features:
         // before returning from this function
         setModuleAction(savedModuleAction.module, saveModuleAction.action);
     }
-    /
     </copy>
     ```
 
 2. Create a call specification for `moduleActionDemo()`
+
+    Create a MLE call specification by right-clicking `plsql_demo` module in the navigation pane on the left hand side followed by _Create Call Spec_. In the ensuing dialog, ensure to complete the fields as follows:
+
+    - Name: moduleActionDemo
+    - From the list of available functions, select `moduleActionDemo`. The panel on the right hand side is now populated with the function's argument and type
+    - Ensure the type is set to `number` rather than `varchar2` by double-clicking the little pencil icon next to `VARCHAR2` and selecting `NUMBER` from the drop down
+    - Leave everything as is and click on _Create_ to create the call specification
+
+    Alternatively, switch to the SQL Worksheet and create the call specification using the following anonymous PL/SQL block:
 
     ```sql
     <copy>
@@ -361,7 +366,9 @@ This task showcases several additional features:
     </copy>
     ```
 
-3. Execute the call specification
+3. Execute the JavaScript function
+
+    Switch to SQL Worksheet, then run the following code:
 
     ```sql
     <copy>
@@ -386,14 +393,14 @@ This task showcases several additional features:
 
     ```
     SQL> declare
-      2  l_object_id RESULT_SET_DEMO_T.object_id%type;
+      2     l_object_id RESULT_SET_DEMO_T.object_id%type;
       3  begin
-      4  select
-      5      min(object_id)
-      6  into
-      7      l_object_id
-      8  from
-      9      RESULT_SET_DEMO_T;
+      4     select
+      5         min(object_id)
+      6     into
+      7         l_object_id
+      8     from
+      9         RESULT_SET_DEMO_T;
       10
       11     moduleActionDemo(l_object_id);
       12 end;
@@ -414,7 +421,7 @@ This task showcases several additional features:
 
 ## Task 4: Perform a DML operation
 
-The previous tasks in this lab focused on _reading_ from the database. In this part of the lab you will perform an insert operation for a change. Rather than providing all columns as part of the insert, you will use a primary key that is defined as an Identity Column.
+The previous tasks in this lab focused on _reading_ from the database. In this part of the lab you will perform an insert operation for a change. Rather than providing all columns as part of the insert, you will use a primary key that is defined as an Identity Column. While you are still in SQL Worksheet, create a new table by copying/pasting and executing the following create table statement into the editor window.
 
 1. Create a new table for this example
 
@@ -431,7 +438,7 @@ The previous tasks in this lab focused on _reading_ from the database. In this p
 
 2. Create an inline JavaScript function to facilitate the insert statement
 
-    Note the use of an object to provide bind variables (both IN and OUT) to the statement. The out-variable will fetch the auto-generated value for the primary key and return it to the caller.
+    Stay in SQL Worksheet, and create the following function. Note the use of an object to provide bind variables (both IN and OUT) to the statement, rather than the previously used array. The out-variable will fetch the auto-generated value for the primary key and return it to the caller.
 
     ```js
     <copy>
@@ -439,7 +446,7 @@ The previous tasks in this lab focused on _reading_ from the database. In this p
         "p_log_message" log_t.log_message%type
     ) return log_t.log_id%type 
     as mle language javascript
-    q'~
+    {{
     const result = session.execute(
         `insert into log_t (
             log_message
@@ -461,14 +468,16 @@ The previous tasks in this lab focused on _reading_ from the database. In this p
     );
 
     // by definition the outBinds array can contain only a single
-    // element in this scenario. 
+    // element in this scenario. If there are potentially more rows
+    // you need to act accordingly
     return result.outBinds.id[0];
-    ~';
-    /
+    }};
     </copy>
     ```
 
-3. Add an example log message
+3. Generate and display an example log message
+
+    Execute the following snippet in your SQL Worksheet:
 
     ```sql
     <copy>
@@ -478,13 +487,14 @@ The previous tasks in this lab focused on _reading_ from the database. In this p
         l_id := log_me('this is a first test');
         dbms_output.put_line('entry created with ID: ' || l_id);
     end;
-    /
     </copy>
     ```
 
+    The script output should provide you with the value of the auto-generated ID.
+
 4. View the log message
 
-    Query the log table using the log ID you just obtained
+    With the auto-generated value of the ID column available, query the log table:
 
     ```sql
     <copy>
@@ -510,4 +520,4 @@ You many now proceed to the next lab.
 
 - **Author** - Martin Bach, Senior Principal Product Manager, ST & Database Development
 - **Contributors** -  Lucas Braun, Sarah Hirschfeld
-- **Last Updated By/Date** - Martin Bach 28-NOV-2023
+- **Last Updated By/Date** - Martin Bach 06-JUN-2024

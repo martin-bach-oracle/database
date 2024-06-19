@@ -24,19 +24,11 @@ In this lab, you will:
 
 This lab assumes you have:
 
-- An Oracle Database 23ai Free environment available to use
-- Created the `emily` account as per Lab 1
+- An Oracle Database 23ai Always Free Autonomous Database-Serverless environment available to use
+- Created the EMILY account as per Lab 1
 - Completed Lab 2 where you created a number of JavaScript modules in the database
 
-## Task 1: Create a database session
-
-Connect to the pre-created Pluggable Database (PDB) `freepdb1` using the same credentials you supplied in Lab 1.
-
-```bash
-<copy>sqlplus emily/yourNewPasswordGoesHere@localhost/freepdb1</copy>
-```
-
-## Task 2: Prepare the debug specification
+## Task 1: Get familiar with the debug specification format
 
 The necessary debug specification is defined as a JSON document. It consists of
 
@@ -50,267 +42,31 @@ Each debugpoint in turn defines
 
 Actions include printing the value of a single variable (`watch` point) or taking a `snapshot` of all variables in the current scope. More information about the structure of the debugscpec can be found in JavaScript Developers Guide, chapter 8.
 
-1. Review the `business_logic` module's source code
+## Task 2: Use Database Actions to perform post-execution debugging
 
-    ```
-    SQL> select line, text from user_source where name = 'BUSINESS_LOGIC';
+Database Actions supports post-execution debugging with a nice, graphical user interface. Start by logging into Database Actions using the EMILY account. Once logged in, **navigate to the JavaScript** editor.
 
-     LINE TEXT
-    ----- ------------------------------------------------------------------------------------------
-        1 import { string2obj } from 'helpers';
-        2 /**
-        3  * A simple function accepting a set of key-value pairs, translates it to JSON bef
-        4  * inserting the order in the database.
-        5  * @param {string} orderData a semi-colon separated string containing the order de
-        6  * @returns {boolean} true if the order could be processed successfully, false oth
-        7  */
-        8 export function processOrder(orderData) {
-        9
-       10     const orderDataJSON = string2obj(orderData);
-       11     const result = session.execute(`
-       12         insert into orders (
-       13             order_id,
-       14             order_date,
-       15             order_mode,
-       16             customer_id,
-       17             order_status,
-       18             order_total,
-       19             sales_rep_id,
-       20             promotion_id
-       21         )
-       22         select
-       23             jt.*
-       24         from
-       25             json_table(:orderDataJSON, '$' columns
-       26                 order_id             path '$.order_id',
-       27                 order_date timestamp path '$.order_date',
-       28                 order_mode           path '$.order_mode',
-       29                 customer_id          path '$.customer_id',
-       30                 order_status         path '$.order_status',
-       31                 order_total          path '$.order_total',
-       32                 sales_rep_id         path '$.sales_rep_id',
-       33                 promotion_id         path '$.promotion_id'
-       34         ) jt`,
-       35         {
-       36             orderDataJSON: {
-       37                 val: orderDataJSON,
-       38                 type: oracledb.DB_TYPE_JSON
-       39             }
-       40         }
-       41     );
-       42     if ( result.rowsAffected === 1 ) {
-       43         return true;
-       44     } else {
-       45         return false;
-       46     }
-       47 }
-    
-    47 rows selected.
-    ```
+1. Review `BUSINESS_LOGIC` code
 
-2. Define the debug specification
+    From the list of modules on the right-hand side, right-click on `BUSINESS_LOGIC`, then select _Edit_ to the load the code into the editor
 
-    In this step you create a debug specification with the following contents:
-    - A watchpoint to print the contents of `orderDataJSON` in line 11
-    - A snapshot of the entire stack in line 42
+    ![Module's source code](images/sdw-business-logic-code.jpg)
 
-    The debug specification consists primarily of an array of JavaScript objects defining which action to take at a given code location.
-
-    ```json
-    {
-        "version": "1.0",
-        "debugpoints": [
-            {
-                "at": {
-                    "name": "BUSINESS_LOGIC",
-                    "line": 11
-                },
-                "actions": [
-                    {
-                        "type": "watch",
-                        "id": "orderDataJSON"
-                    }
-                ]
-            },
-            {
-                "at": {
-                    "name": "BUSINESS_LOGIC",
-                    "line": 42
-                },
-                "actions": [
-                    {
-                        "type": "snapshot"
-                    }
-                ]
-            }
-        ]
-    }
-    ```
-
-## Task 3: Run the code with the debug specification attached
-
-This step brings it all together. The debug specification is stored in a variable of type `JSON`, the code is executed with the debug specification attached, and the result is printed on screen.
-
-```sql
-<copy>
-set serveroutput on
-declare
-    -- variables needed for post-execution debugging
-    l_debugspec       JSON;
-    l_debugsink       BLOB;
-    l_debugtext       JSON;
-
-    -- variables related to the business logic
-    l_success         boolean := false;
-    l_order_as_string varchar2(512);
-begin
-    -- initialise the debug specification
-    l_debugspec := JSON('
-        {
-            "version": "1.0",
-            "debugpoints": [
-                {
-                    "at": {
-                        "name": "BUSINESS_LOGIC",
-                        "line": 11
-                    },
-                    "actions": [
-                        {
-                            "type": "watch",
-                            "id": "orderDataJSON"
-                        }
-                    ]
-                },
-                {
-                    "at": {
-                        "name": "BUSINESS_LOGIC",
-                        "line": 42
-                    },
-                    "actions": [
-                        {
-                            "type": "snapshot"
-                        }
-                    ]
-                }
-            ]
-        }');
-
-    -- before any information can appended to a LOB it must be initialised first
-    dbms_lob.createTemporary(l_debugsink, false, dbms_lob.session);
-
-    -- enable debugging
-    dbms_mle.enable_debugging(l_debugspec, l_debugsink);
-
-    -- run the business logic
-    l_order_as_string := 'order_id=10;order_date=2023-04-24T10:27:52;order_mode=theMode;customer_id=1;order_status=2;order_total=42;sales_rep_id=1;promotion_id=1';
-    l_success  := business_logic_pkg.process_order(l_order_as_string);
-
-    -- get the debug output as JSON (not normally done this way, 
-    -- tools such as Database Actions should be used instead because
-    -- the debug output quickly becomes hard to read on screen when tracking
-    -- many variables)
-    l_debugtext := dbms_mle.parse_debug_output(l_debugsink);
-    dbms_output.put_line('-- debug output: ' ||
-        json_serialize(l_debugtext returning clob pretty)
-    );
-
-    -- disable debugging
-    dbms_mle.disable_debugging();
-exception
-    when others then
-        raise;
-end;
-/
-</copy>
-```
-
-## Task 4: Review the generated debug output
-
-When executing the above code snippet the following information is printed on screen:
-
-```json
-[
-  [
-    {
-      "at": {
-        "name": "EMILY.BUSINESS_LOGIC",
-        "line": 11
-      },
-      "values": {
-        "orderDataJSON": {
-          "customer_id": "1",
-          "order_date": "2023-04-24T10:27:52",
-          "order_id": "10",
-          "order_mode": "theMode",
-          "order_status": "2",
-          "order_total": "42",
-          "promotion_id": "1",
-          "sales_rep_id": "1"
-        }
-      }
-    }
-  ],
-  [
-    {
-      "at": {
-        "name": "EMILY.BUSINESS_LOGIC",
-        "line": 42
-      },
-      "values": {
-        "result": {
-          "rowsAffected": 1
-        },
-        "this": {},
-        "orderData": "order_id=10;order_date=2023-04-24T10:27:52;order_mode=theMode;customer_id=1;order_status=2;order_total=42;sales_rep_id=1;romotion_id=1",
-        "orderDataJSON": {
-          "customer_id": "1",
-          "order_date": "2023-04-24T10:27:52",
-          "order_id": "10",
-          "order_mode": "theMode",
-          "order_status": "2",
-          "order_total": "42",
-          "promotion_id": "1",
-          "sales_rep_id": "1"
-        }
-      }
-    }
-  ]
-]
-```
-
-You can see that both probes fired:
-
-- The watchpoint recorded the contents of `orderDataJSON`
-- The snapshot caused all variables defined in memory to be dumped:
-
-    - `result`
-    - `this`
-    - `orderData`
-    - `orderDataJSON`
-
-## Task 5: Use Database Actions to perform post-execution debugging
-
-Database Actions supports debugging with a nice, graphical user interface. Start by logging into Database Actions using the EMILY account. Once logged in, navigate to "MLE JS". Rather than using the Editor panel, this time you need to switch to **Snippets**.
-
-1. Create a JavaScript environment
+2. Create a new JavaScript environment
 
     On the left-hand side of the screen select "Environments" from the drop down list. Next, click on the "..." icon and select "Create Object" to open the "Create MLE Environment" Wizard.
 
-    ![Prepare to create a new MLE Environment](images/sdw-create-mle-env.jpg)
+    ![Create new environment](images/sdw-create-new-env.jpg)
 
-    From the wizard's left hand side, listing all available modules, add both `BUSINESS_LOGIC` and `HELPER_MODULE_INLINE` to the list of imported modules by highlighting them, followed by a click on the `>` arrow.
+    From the wizard's left hand side, listing all available modules, add both `BUSINESS_LOGIC` and `HELPER_MODULE_INLINE` to the list of imported modules by highlighting them, followed by a click on the `>` arrow. Complete the wizard as per the screenshot, changing the properties highlighted by the red text boxes.
 
     ![Create the businessLogic MLE Environment using the Wizard](images/sdw-create-mle-env-wizard.jpg)
 
-    Complete the wizard as per the screenshot, changing the properties highlighted by the red text boxes.
+    Click on the _Create_ button to persist the environment in the database.
 
-    ![Create the businessLogic MLE Environment using the Wizard](images/sdw-create-mle-env-wizard2.jpg)
+3. Create a JavaScript snippet
 
-    Click on the "Create" button to persist the environment in the database.
-
-2. Create a JavaScript snippet
-
-    Next you create a JavaScript code snippet invoking `processOrder()` from the `BUSINESS_LOGIC` module. Snippets require the use of Dynamic JavaScript imports which is why you are seeing an asynchronous function. Copy and paste the following code into the Snippet editor:
+    Next you create a JavaScript code snippet invoking `processOrder()` from the `BUSINESS_LOGIC` module. First switch from the (Module) _Editor_ to _Snippets_. Snippets require you to use dynamic imports which is why you see an asynchronous function. Copy and paste the following code into the **Snippets** editor:
 
     ```js
     <copy>
@@ -327,15 +83,17 @@ Database Actions supports debugging with a nice, graphical user interface. Start
     </copy>
     ```
 
-3. Create a Debug Specification
+    From the _Environment_ drop-down, select the newly created `DEBUG_ENV`. If you don't see it listed, refresh the list by clicking on the refresh button right next to it and try again.
 
-    In the next step you must associate the newly created environment with the snippet. From the environment drop-down at the top of the window, select `BUSINESS_LOGIC_ENV`. With the environment associated you can create a new debug spec as shown in the screenshot.
+4. Create a Debug Specification
+
+    If you haven't yet selected `DEBUG_ENV` as your environment, do that now. With the environment associated you can create a new debug spec as shown in the screenshot.
 
     ![Create a debug spec in Database Action](images/sdw-create-debug-spec.jpg)
 
-    Clicking on the New Debug Specification button opens the wizard interface. Change the name to `hol23c_debug_spec` in the top left corner. Optionally select `BUSINESS_LOGIC` from the Module drop down to correlate the debug specification with the module's code.
+    Clicking on the New Debug Specification button opens the wizard interface. Change the name to `DEBUB_SPEC` in the top left corner. Optionally select `BUSINESS_LOGIC` from the Module drop down to correlate the debug specification with the module's code.
 
-    Paste the following debug specification into the left panel as shown in the screenshot:
+    Paste the following debug specification into the left panel:
 
     ```json
     <copy>
@@ -371,27 +129,24 @@ Database Actions supports debugging with a nice, graphical user interface. Start
     </copy>
     ```
 
-    This is a screenshot of the completed wizard interface:
+    The completed debug spec wizard should look like this:
 
-    ![Database Actions Debug Specification Wizard](images/sdw-create-debug-spec-wizard.jpg)
+    ![Debug specification wizard](images/sdw-debug-spec-final.jpg)
 
-    Click on the "Create" button to save the debug specification.
+    Click on the _Create_ button to save the debug specification.
 
-4. Run the code with debugging enabled
+5. Run the code with debugging enabled
 
-    Back in the Snippets editor make sure the newly created `business_logic_env` is selected. You may have to hit the circle icon first in case the
-    environment doesn't appear in the drop-down list.
+    Back in the Snippets editor make sure the previously created `DEBUG_ENV` is selected as _Environment_. Additionally, you must have `DEBUG_SPEC` selected from the _Debug Specification_ drop-down menu. You may have to hit the circle icon first in case list needs refreshing.
 
-    Click on the "Debug Snippet" button highlighted in red in the following screenshot to run the JavaScript snippet with debugging enabled. Focus will automatically switch to the Debug Console where you can see the results of the debug run:
+    Click on the "Debug Snippet" button pointed at by the red arrow in the following screenshot to run the JavaScript snippet with debugging enabled. Focus will automatically switch to the Debug Console where you can see the results of the debug run:
 
     - The watchpoint fired in line 11 showing the value of `orderDataJSON`
     - The second watchpoint fired as well, showing that exactly 1 row was affected by the insert statement
 
-    Clicking on little triangles expands the information provided, you can even click on the variable to see where in the code it is located.
+    ![Post execution debuggin results](images/sdw-debug-info.jpg)
 
-    ![Database Actions debug summary](images/sdw-debug-info.jpg)
-
-## Task 6 (optional): On-demand debugging
+## Task 3 (optional): On-demand debugging
 
 In an ideal world post-execution debugging should be simple to enable without having to change any code, maybe even by a "super user" application account. Otherwise, support will find it very hard to troubleshoot problems reported by the user base. Rather than hard-coding calls to `dbms_mle.enable_debugging()` and `dbms_mle.disable_debugging()`, in this task you will learn how to run business logic with debugging enabled on demand.
 
@@ -495,7 +250,7 @@ In an ideal world post-execution debugging should be simple to enable without ha
             p_order_data varchar2
         ) return boolean
             as mle module business_logic
-            env business_module_env
+            env business_logic_env
             signature 'processOrder(string)';
         
         -- (public) wrapper function to process_order()
@@ -608,14 +363,12 @@ In an ideal world post-execution debugging should be simple to enable without ha
         when others then
             raise;
     end;
-    /
     </copy>
     ```
 
     You should get the following output (some of it removed for clarity)
 
     ```
-    SQL> /
     running normally, no debug spec referenced in the call
     execution finished successfully
 
@@ -637,14 +390,12 @@ In an ideal world post-execution debugging should be simple to enable without ha
         when others then
             raise;
     end;
-    /
     </copy>
     ```
 
     You should get the following output (some of it removed for clarity)
 
     ```
-    SQL> /
     running with debugging enabled
     execution finished successfully
 
@@ -666,66 +417,55 @@ In an ideal world post-execution debugging should be simple to enable without ha
     </copy>
     ```
 
-    The query produces the following output:
+    From the Query Result pane, left-click the only row returned by the query, then click on the little "eye" icon to see the output. You should see the following JSON:
 
-    ```
-    DEBUG_INFO
-    ----------------------------------------------------------------------------------------
+    ```json
     [
-      [
-        {
-          "at" :
-          {
-            "name" : "EMILY.BUSINESS_LOGIC",
-            "line" : 11
-          },
-          "values" :
-          {
-            "orderDataJSON" :
+        [
             {
-              "customer_id" : "1",
-              "order_date" : "2023-04-24T10:27:52",
-              "order_id" : "21",
-              "order_mode" : "theMode",
-              "order_status" : "2",
-              "order_total" : "42",
-              "promotion_id" : "1",
-              "sales_rep_id" : "1"
+                "at": {
+                    "name": "EMILY.BUSINESS_LOGIC",
+                    "line": 11
+                },
+                "values": {
+                    "orderDataJSON": {
+                        "customer_id": "1",
+                        "order_date": "2023-04-24T10:27:52",
+                        "order_id": "21",
+                        "order_mode": "theMode",
+                        "order_status": "2",
+                        "order_total": "42",
+                        "promotion_id": "1",
+                        "sales_rep_id": "1"
+                    }
+                }
             }
-          }
-        }
-      ],
-      [
-        {
-          "at" :
-          {
-            "name" : "EMILY.BUSINESS_LOGIC",
-            "line" : 42
-          },
-          "values" :
-          {
-            "result" :
+        ],
+        [
             {
-              "rowsAffected" : 1
-            },
-            "this" :
-            {
-            },
-            "orderData" : "order_id=21;order_date=2023-04-24T10:27:52;order_mode=theMode;customer_id=1;order_status=2;order_total=42;sales_rep_id=1;    promotion_id=1",
-            "orderDataJSON" :
-            {
-              "customer_id" : "1",
-              "order_date" : "2023-04-24T10:27:52",
-              "order_id" : "21",
-              "order_mode" : "theMode",
-              "order_status" : "2",
-              "order_total" : "42",
-              "promotion_id" : "1",
-              "sales_rep_id" : "1"
+                "at": {
+                    "name": "EMILY.BUSINESS_LOGIC",
+                    "line": 43
+                },
+                "values": {
+                    "result": {
+                        "rowsAffected": 1
+                    },
+                    "this": {},
+                    "orderData": "order_id=21;order_date=2023-04-24T10:27:52;order_mode=theMode;customer_id=1;order_status=2;order_total=42;sales_rep_id=1;promotion_id=1",
+                    "orderDataJSON": {
+                        "customer_id": "1",
+                        "order_date": "2023-04-24T10:27:52",
+                        "order_id": "21",
+                        "order_mode": "theMode",
+                        "order_status": "2",
+                        "order_total": "42",
+                        "promotion_id": "1",
+                        "sales_rep_id": "1"
+                    }
+                }
             }
-          }
-        }
-      ]
+        ]
     ]
     ```
 
@@ -741,4 +481,4 @@ You many now proceed to the next lab.
 
 - **Author** - Martin Bach, Senior Principal Product Manager, ST & Database Development
 - **Contributors** -  Lucas Braun, Sarah Hirschfeld
-- **Last Updated By/Date** - Martin Bach 28-NOV-2023
+- **Last Updated By/Date** - Martin Bach 19-JUN-2024
